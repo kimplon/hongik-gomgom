@@ -1,7 +1,8 @@
-//localhost3001
+//api call gpt3.5turbo
 
 import express from 'express';
 import * as dotenv from 'dotenv';
+import fs from "fs";
 import { Configuration, OpenAIApi } from 'openai';
 
 dotenv.config({path:'../../.env'});
@@ -13,21 +14,60 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
-const chatBotRole = process.env.chatBotRole;
-const messageSummary="User : 내 이름은 신유승이야";
-const rules= process.env.rules;
+const chatBotRole    = process.env.CHATBOT_ROLE;
+const userName="";
+const rules= process.env.RULES;
+
+//------------settings--------------
+
+
+let conversationLog = [];
+
+function loadConversationLog() {
+    if (fs.existsSync("conversationLog.json")) {
+      const logFileContent = fs.readFileSync("conversationLog.json", "utf-8");
+      if (logFileContent.trim()) { // 로그 파일이 비어있지 않은 경우에만 파싱
+        return JSON.parse(logFileContent);
+      }
+    } 
+    return []; // 로그 파일이 존재하지 않거나 비어있는 경우 빈 배열 반환
+}
+
+function saveConversationLog() {
+    try {
+      fs.writeFileSync("conversationLog.json", JSON.stringify(conversationLog));
+    } catch (err) {
+      console.error("Failed to save conversation log", err);
+    }
+}
+
+
+
+//console.log(conversationLog);
 
 app.get('/chat', async (req, res) => {
   const { question } = req.query;
+
+  conversationLog = loadConversationLog();
+
+  const lastMessages = conversationLog.slice(-50).map((msg) => `${msg.role}: ${msg.content}`).join("\n");
+  const messageSummary = lastMessages.length > 0 ? `Last Messages:\n${lastMessages}` : "";
+
   const response = await openai.createChatCompletion({
     model: "gpt-3.5-turbo",
     messages:[
-        {role: "assistant",content : "너는 이야기 치료법을 공부했고 그걸 기반으로 user의 심리를 상담해주는 상담사로 이야기를 들어주는 bot이야. 너와 앞으로 대화할 user는 내담자이고. 그에게 공감을 해주는 것을 바탕으로 해결책을 바로 제시하기보단 어떤일이 있는지 감정은 어떤지를 중심으로 질문을 계속해줘야해." }, 
-        {role: "assistant", content: messageSummary},
+        {role: "assistant",content : chatBotRole }, 
+        {role: "assistant", content: userName},
+        {role: "assistant",content : messageSummary},
+        {role: "assistant",content:rules},
         {role: "user", content: question }
     ],    
   });
+  const answer = response.data.choices[0].message.content;
   res.send(response.data.choices[0].message.content);
+  conversationLog.push({role : "user",content:question});
+  conversationLog.push({role: "bot", content: answer });
+  saveConversationLog();
 });
 
 app.listen(port, () => {
